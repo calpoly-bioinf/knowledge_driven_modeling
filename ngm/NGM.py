@@ -23,7 +23,7 @@ def next_batch(training_edges, start, finish, edges, X, y):
 
     batch_edges = np.array_split(batch_edges, 3)
     
-    #randomly assign labelled, unlabelled 
+    #randomly assign labelled, unlabelled -- TO DO: Fix This in pre-processing.
     edges_ll = batch_edges[0]
     edges_lu = batch_edges[1]
     edges_uu = batch_edges[2]
@@ -78,21 +78,28 @@ def next_batch(training_edges, start, finish, edges, X, y):
 
     
     
-def batch_iter(batch_size, training_size, c_merged, X, y):
+def batch_iter(batch_size, training_size, c_merged, X, y, batch_edges):
     edges = c_merged
     edges.values[[np.arange(len(edges))]*2] = np.nan
     edges = edges.stack().reset_index()
     
-    training_edges = edges.sample(n=training_size)
+    training_edges = edges[edges['level_0'].isin(batch_edges.index)]
     
-    num_batches = len(training_edges) / batch_size
+
+    #num_batches = len(training_edges) / batch_size
     data_size = len(training_edges)
+    
+
     
     if data_size % batch_size > 0:
         num_batches = int(data_size / batch_size) + 1
+    else:
+        num_batches = data_size / batch_size
+        
+
     
 
-    for batch_num in range(num_batches):
+    for batch_num in range(int(num_batches)):
         start_index = batch_num * batch_size
         end_index = min((batch_num + 1) * batch_size, data_size)
         yield next_batch(training_edges,start_index,end_index,edges,X,y)
@@ -132,13 +139,14 @@ def my_test_loss(scores_u1, scores_v1, scores_u2, scores_v2, scores_u3, scores_v
                     + torch.sum(w_uu * my_softmax_cross_entropy_with_logits(scores_u3, torch.nn.functional.softmax(scores_v3)))
     return loss_function
 
-def train(model,training_size,learning_rate,num_epochs, batch_size, c_merged, X_df, y):
+def train(model,training_size,learning_rate,num_epochs, batch_size, c_merged, X_df, y, X_train):
     # Loss and optimizer
     # criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)  
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate) 
+
     
-    for epoch in range(1,30):
-        for i, (u1, v1, lu1, lv1, u3, v3, u2, v2, lu2, w_ll, w_lu, w_uu, c_ull, c_vll, c_ulu) in enumerate(batch_iter(batch_size, training_size, c_merged, X_df, y)):   # Load a batch of images with its (index, data, class)
+    for epoch in range(0,30):
+        for i, (u1, v1, lu1, lv1, u3, v3, u2, v2, lu2, w_ll, w_lu, w_uu, c_ull, c_vll, c_ulu) in enumerate(batch_iter(batch_size, training_size, c_merged, X_df, y, X_train)):   # Load a batch of images with its (index, data, class)
 
             
             #batch_size = len(labels)
@@ -161,13 +169,13 @@ def train(model,training_size,learning_rate,num_epochs, batch_size, c_merged, X_
             optimizer.step()                                  # Optimizer: update the weights of hidden nodes
 
             if (i+1) % 20 == 0:                              # Logging
-                print('Epoch [%d/%d], Step [%d/%d], Loss: %.4f' %(epoch+1, num_epochs, i+1, training_size//batch_size, loss.item()))
+                print('Epoch [%d/%d], Step [%d/%d], Loss: %.4f' %(epoch+1, num_epochs, i+1, 0, loss.item()))
  
 
-def prepare_for_evaluation(model, batch_size, training_size, c_merged, X_df, y):
+def prepare_for_evaluation(model, batch_size, training_size, c_merged, X_df, y, X_test):
     all_predicted = []
     all_labels = []
-    for i, (u1, v1, lu1, lv1, u3, v3, u2, v2, lu2, w_ll, w_lu, w_uu, c_ull, c_vll, c_ulu) in enumerate(batch_iter(batch_size, training_size, c_merged, X_df, y)):   # Load a batch of images with its (index, data, class)
+    for i, (u1, v1, lu1, lv1, u3, v3, u2, v2, lu2, w_ll, w_lu, w_uu, c_ull, c_vll, c_ulu) in enumerate(batch_iter(batch_size, training_size, c_merged, X_df, y, X_test)):   # Load a batch of images with its (index, data, class)
         # TODO: 
         outputs = model(u1.float()) 
         _, predicted = torch.max(outputs.data, 1)  # Choose the best class from the output: The class with the best score
